@@ -12,15 +12,23 @@ public class WebVRControllerButton
     public float value;
 }
 
-public class WebVRController
+public class WebVRController : MonoBehaviour
 {
+    [Tooltip("Map GameObject to controller hand name.")]
+    public WebVRControllerHand hand = WebVRControllerHand.NONE;
+
+    // public Enum hand;
+    [HideInInspector]
     public int index;
-    public Enum hand;
+    [HideInInspector]
     public Vector3 position;
+    [HideInInspector]
     public Quaternion rotation;
+    [HideInInspector]
     public Matrix4x4 sitStand;
+    [HideInInspector]
     public WebVRControllerButton[] buttons = null;
-    public GameObject gameObject;
+//    public GameObject gameObject;
 
     private Dictionary<WebVRInputAction, bool[]> buttonStates = new Dictionary<WebVRInputAction, bool[]>();
     
@@ -81,13 +89,49 @@ public class WebVRController
         return isUp;
     }
 
-    public WebVRController(int index, Enum hand, Vector3 position, Quaternion rotation, Matrix4x4 sitStand)
+    private void onControllerUpdate(
+		int index, string h, Vector3 position, Quaternion rotation, Matrix4x4 sitStand, WebVRControllerButton[] b)
+	{
+        // convert string to enum
+        WebVRControllerHand updateHand;
+        if (String.IsNullOrEmpty(h))
+            updateHand = WebVRControllerHand.NONE;
+        else
+            updateHand = (WebVRControllerHand) Enum.Parse(typeof(WebVRControllerHand), h.ToUpper(), true);
+
+        if (updateHand == hand)
+        {
+            // Apply controller orientation and position.
+            Quaternion sitStandRotation = Quaternion.LookRotation (
+                sitStand.GetColumn (2),
+                sitStand.GetColumn (1)
+            );
+            transform.rotation = sitStandRotation * rotation;
+            transform.position = sitStand.MultiplyPoint(position);
+
+            UpdateButtons(b);
+        }	
+    }
+
+    void Update()
     {
-        this.index = index;
-        this.hand = hand;
-        this.position = position;
-        this.rotation = rotation;
-        this.sitStand = sitStand;
-        this.gameObject = null;
+		#if UNITY_EDITOR
+        if (hand == WebVRControllerHand.LEFT)
+        {
+            transform.position = UnityEngine.XR.InputTracking.GetLocalPosition(UnityEngine.XR.XRNode.LeftHand);
+			transform.rotation = UnityEngine.XR.InputTracking.GetLocalRotation(UnityEngine.XR.XRNode.LeftHand);
+        }
+
+        if (hand == WebVRControllerHand.RIGHT)
+        {
+            transform.position = UnityEngine.XR.InputTracking.GetLocalPosition(UnityEngine.XR.XRNode.RightHand);
+			transform.rotation = UnityEngine.XR.InputTracking.GetLocalRotation(UnityEngine.XR.XRNode.RightHand);
+        }
+        #endif
+    }
+
+    void Start()
+    {
+        WebVRManager.OnControllerUpdate += onControllerUpdate;
     }
 }
