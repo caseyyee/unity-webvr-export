@@ -12,7 +12,6 @@ public class ControllerInteraction : MonoBehaviour
 
     void Awake()
     {
-        //controllerManager = WebVRControllerManager.Instance;
         attachJoint = GetComponent<FixedJoint> ();
     }
 
@@ -20,14 +19,12 @@ public class ControllerInteraction : MonoBehaviour
     {
         WebVRController controller = gameObject.GetComponent<WebVRController>();
 
-        if (controller.GetButtonDown("Trigger") ||
-            controller.GetButtonDown("Grip"))
+        if (controller.GetButtonDown("Trigger"))
         {
             Pickup();
         }
 
-        if (controller.GetButtonUp("Trigger") ||
-            controller.GetButtonUp("Grip"))
+        if (controller.GetButtonUp("Trigger"))
         {
             Drop();
         }
