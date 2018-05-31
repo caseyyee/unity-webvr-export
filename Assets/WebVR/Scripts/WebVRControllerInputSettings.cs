@@ -10,7 +10,10 @@ public class WebVRControllerInputSettings : ScriptableObject {
 
 [System.Serializable]
 public class WebVRControllerInput {
+	[Tooltip("Name of input action to be performed.")]
 	public string actionName;
-	public int gamepadId;
-	public string unityInputAction;
+	[Tooltip("WebVR Gamepad button ID.")]
+	public int gamepadButtonId;
+	[Tooltip("Button name defined in Unity Input Manager.")]
+	public string unityInputName;
 }
