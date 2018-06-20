@@ -163,6 +163,6 @@ public class WebVRController : MonoBehaviour
 
     void Start()
     {
-        WebVRManager.OnControllerUpdate += onControllerUpdate;
+        WebVRManager.Instance.OnControllerUpdate += onControllerUpdate;
     }
 }
