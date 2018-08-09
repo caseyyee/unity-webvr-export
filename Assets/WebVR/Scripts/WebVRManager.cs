@@ -79,6 +79,7 @@ public class WebVRManager : MonoBehaviour
 
     private void Awake()
     {
+        Debug.Log("Active Graphics Tier: " + Graphics.activeTier);
         instance = this;
                 
         if (instance.dontDestroyOnLoad)

@@ -28,6 +28,10 @@
   var unityLoaded = false;
   var submittingFrames = false;
 
+  var frameTimes = [];
+  var fps;
+  var perfStatus = document.getElementById('performance');
+
   if ('serviceWorker' in navigator && 'isSecureContext' in window && !window.isSecureContext) {
     console.warn('The site is insecure; Service Workers will not work and the site will not be recognized as a PWA');
   } else if ('serviceWorker' in navigator) {
@@ -195,6 +199,15 @@
   }
 
   function onAnimate () {
+    var now = performance.now();
+
+    while (frameTimes.length > 0 && frameTimes[0] <= now - 1000) {
+      frameTimes.shift();
+    }
+    frameTimes.push(now);
+    fps = frameTimes.length;
+    perfStatus.innerHTML = fps;
+    
     if (!vrDisplay && gameInstance.vrDisplay) {
       frameData = new VRFrameData();
       vrDisplay = gameInstance.vrDisplay;
