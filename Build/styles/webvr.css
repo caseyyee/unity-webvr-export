@@ -96,6 +96,15 @@ a:link, a:visited {
   padding: 10px;
 }
 
+#performance {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  color: #fff;
+  padding: 10px;
+  background: #000;
+}
+
 [data-unity-loaded='true'] #status[data-enabled='true'] {
   display: block;
 }
