@@ -7,11 +7,11 @@
     this.rightProjectionMatrix = mat4.create();
     this.leftViewMatrix = mat4.create();
     this.rightViewMatrix = mat4.create();
-    this.sitStand = mat4.create();
+    this.sitStandMatrix = mat4.create();
     this.gamepads = [];
     this.vrGamepads = [];
     this.vrData = null;
-    this.defaultHeight = 1.5;
+    // this.defaultHeight = 1.5;
   }
 
   function VRManager() {
@@ -78,13 +78,17 @@
   }
 
   VRManager.prototype.resize = function () {
+    console.log('--- resize');
     if (!this.canvas) return;
+
+    var scaleResolution = 0.75;
 
     if (this.vrDisplay && this.vrDisplay.isPresenting) {
       var leftEye = this.vrDisplay.getEyeParameters('left');
       var rightEye = this.vrDisplay.getEyeParameters('right');
-      // this.canvas.width = Math.max(leftEye.renderWidth, rightEye.renderWidth) * 2;
-      // this.canvas.height = Math.max(leftEye.renderHeight, rightEye.renderHeight);
+
+      this.canvas.width = Math.max(leftEye.renderWidth, rightEye.renderWidth) * 2 * scaleResolution;
+      this.canvas.height = Math.max(leftEye.renderHeight, rightEye.renderHeight) * scaleResolution;
 
       // // scale game container so we get a proper sized mirror of VR content to desktop.
       // var scaleX = window.innerWidth / renderWidth;
@@ -158,7 +162,7 @@
     this.setVRDisplay(evt.display);
   }
 
-  VRManager.prototype.updateDisplayCapabilities = function() {
+  VRManager.prototype.updateDisplayCapabilities = async function() {
     if (!this.vrDisplay) {
       return;
     }
@@ -167,7 +171,6 @@
     var hasPosition = this.vrDisplay.capabilities.hasPosition;
     var hasExternalDisplay = this.vrDisplay.capabilities.hasExternalDisplay;
 
-    // todo: check for game instnace loaded.
     this.gameInstance.SendMessage(
       this.unityObjectName, 'OnVRCapabilities',
       JSON.stringify({
@@ -205,12 +208,14 @@
         console.log('on start vr');
         this.gameInstance.SendMessage(this.unityObjectName, 'OnStartVR');
         this.wasPresenting = true;
+        this.resize();
       }
   
       if (!this.vrDisplay.isPresenting && this.wasPresenting) {
         console.log('on end vr');
         this.gameInstance.SendMessage(this.unityObjectName, 'OnEndVR');
         this.wasPresenting = false;
+        this.resize();
       }
       
       
@@ -253,7 +258,9 @@
 
     this.gameInstance = window.gameInstance;
 
+    console.log(">>> unity loaded, resizing");
     this.resize();
+    
     this.getVRDisplay();
     this.requestPresent(this.canvas);
   }
@@ -358,21 +365,35 @@
 
       // Sit Stand transform
       if (this.vrDisplay.stageParameters) {
-        mat4.copy(vrData.sitStand, this.vrDisplay.stageParameters.sittingToStandingTransform);
-      } else {
-        mat4.identity(vrData.sitStand);
-        mat4.translate(vrData.sitStand, vrData.sitStand, [0, vrData.defaultHeight, 0]);
+        mat4.copy(vrData.sitStandMatrix, this.vrDisplay.stageParameters.sittingToStandingTransform);
       }
-      mat4.transpose(vrData.sitStand, vrData.sitStand);
+      //  else {
+      //   mat4.identity(vrData.sitStand);
+      //   mat4.translate(vrData.sitStand, vrData.sitStand, [0, vrData.defaultHeight, 0]);
+      // }
+      mat4.transpose(vrData.sitStandMatrix, vrData.sitStandMatrix);
 
-      gameInstance.SendMessage('WebVRCameraSet', 'OnWebVRData', JSON.stringify({
-        leftProjectionMatrix: Array.from(vrData.leftProjectionMatrix),
-        rightProjectionMatrix: Array.from(vrData.rightProjectionMatrix),
-        leftViewMatrix: Array.from(vrData.leftViewMatrix),
-        rightViewMatrix: Array.from(vrData.rightViewMatrix),
-        sitStand: Array.from(vrData.sitStand),
-        controllers: this.getGamepads(navigator.getGamepads())
-      }));
+      // var hmdData = {
+      //   leftProjectionMatrix: Array.from(vrData.leftProjectionMatrix),
+      //   rightProjectionMatrix: Array.from(vrData.rightProjectionMatrix),
+      //   leftViewMatrix: Array.from(vrData.leftViewMatrix),
+      //   rightViewMatrix: Array.from(vrData.rightViewMatrix),
+      //   sitStand: Array.from(vrData.sitStand),
+      //   controllers: this.getGamepads(navigator.getGamepads())
+      // };
+
+      // gameInstance.SendMessage('WebVRCameraSet', 'OnWebVRData', JSON.stringify({
+      //   controllers: this.getGamepads(navigator.getGamepads())
+      // }));
+
+      var hmdData = {
+        leftProjectionMatrix: vrData.leftProjectionMatrix,
+        rightProjectionMatrix: vrData.rightProjectionMatrix,
+        leftViewMatrix: vrData.leftViewMatrix,
+        rightViewMatrix: vrData.rightViewMatrix,
+        sitStandMatrix: vrData.sitStandMatrix
+      }
+      document.dispatchEvent(new CustomEvent('VRData', { detail: hmdData }));
     }
 
     //   if (!vrDisplay.isPresenting || isPolyfilled(vrDisplay)) {

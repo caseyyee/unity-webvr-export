@@ -1,6 +1,476 @@
 (function () {
   'use strict';
+  // https://github.com/mozilla/unity-webvr-export/issues/126
 
+  function VRData() {
+    this.leftProjectionMatrix = mat4.create();
+    this.rightProjectionMatrix = mat4.create();
+    this.leftViewMatrix = mat4.create();
+    this.rightViewMatrix = mat4.create();
+    this.sitStandMatrix = mat4.create();
+    this.gamepads = [];
+    this.vrGamepads = [];
+    this.vrData = null;
+    // this.defaultHeight = 1.5;
+  }
+
+  function VRManager() {
+    this.enterVRButton = document.getElementById('entervr');
+    this.gameContainer = document.getElementById('game');
+
+    this.statusEl = document.getElementById('status');
+
+    // Unity GameObject name which we will SendMessage to. 
+    this.unityObjectName = 'WebVRCameraSet';
+
+    // this.statusIcons = document.getElementById('icons');
+    // this.vrControllerIconTemplate = document.getElementById('motion-controller');
+    // this.noVRInstructions = document.getElementById('novr');
+
+  
+    this.raf = null;
+    this.rafOriginal = window.requestAnimationFrame;
+    this.vrDisplay = null;
+    this.canvas = null;
+    this.gameInstance = null;
+    this.polyfill = null;
+
+    this.frameData = false;
+    this.wasPresenting = false;
+
+    this.vrData = new VRData();
+
+    this.postRenderTime = 0;
+    this.perfStatus = document.getElementById('performance');
+
+    this.init();
+  }
+
+  VRManager.prototype.init = function () {
+    if (window.WebVRPolyfill) {
+      this.polyfill = new WebVRPolyfill();
+    }
+    
+    this.attachEventListeners();
+  }
+
+  VRManager.prototype.attachEventListeners = function () {
+    var onResize = this.resize.bind(this);
+    var onToggleVr = this.toggleVr.bind(this);
+    var onActivate = this.activate.bind(this);
+    var onDeactivate = this.deactivate.bind(this);
+    var onPresentChange = this.presentChange.bind(this);
+    var onUnityLoaded = this.unityLoaded.bind(this);
+    var onUnityMessage = this.unityMessage.bind(this);
+  
+    window.addEventListener('vrdisplayactivate', onActivate);
+    window.addEventListener('vrdisplaydeactivate', onDeactivate);
+    window.addEventListener('vrdisplaypresentchange', onPresentChange);
+    window.addEventListener('resize', onResize, true);
+
+    // dispatched by index.html
+    document.addEventListener('UnityLoaded', onUnityLoaded, false);
+    document.addEventListener('Unity', onUnityMessage, false);
+    
+    //window.addEventListener('keyup', onKeyUp, false);
+    
+    this.enterVRButton.addEventListener('click', onToggleVr, false);
+  }
+
+  VRManager.prototype.resize = function () {
+    console.log('--- resize');
+    if (!this.canvas) return;
+
+    var scaleResolution = 0.5;
+
+    if (this.vrDisplay && this.vrDisplay.isPresenting) {
+      var leftEye = this.vrDisplay.getEyeParameters('left');
+      var rightEye = this.vrDisplay.getEyeParameters('right');
+
+      this.canvas.width = Math.max(leftEye.renderWidth, rightEye.renderWidth) * 2 * scaleResolution;
+      this.canvas.height = Math.max(leftEye.renderHeight, rightEye.renderHeight) * scaleResolution;
+
+      // // scale game container so we get a proper sized mirror of VR content to desktop.
+      // var scaleX = window.innerWidth / renderWidth;
+      // var scaleY = window.innerHeight / renderHeight;
+      // this.gameContainer.setAttribute('style', `transform: scale(${scaleX}, ${scaleY}); transform-origin: top left;`);
+    } else {
+      this.canvas.width = window.innerWidth;
+      this.canvas.height = window.innerHeight;
+      this.gameContainer.style.transform = '';
+    }
+  }
+
+  VRManager.prototype.requestPresent = function(canvas) {
+    if (!this.vrDisplay) return;
+
+    //this.gameInstance.SendMessage(this.unityObjectName, 'OnStartVR');
+
+    return this.vrDisplay.requestPresent([{ source: canvas }]).then(function () {
+      console.log('Entered VR');
+    }).catch(function (err) {
+      console.error('Unable to enter VR mode: ', err);
+    });
+  }
+
+  VRManager.prototype.exitPresent = function() {
+    if (!this.vrDisplay && !this.vrDisplay.isPresenting) {
+      console.warn('No VR display to exit VR mode');
+      return;
+    }
+
+    //this.gameInstance.SendMessage(this.unityObjectName, 'OnEndVR');
+    // onResize();
+  
+    return this.vrDisplay.exitPresent().then(function () {
+      console.log('Exited VR');
+    }).catch(function (err) {
+      console.error('Unable to exit VR mode:', err);
+    });  
+  }
+
+  VRManager.prototype.toggleVr = function () {
+    if (this.vrDisplay && this.vrDisplay.isPresenting && this.gameInstance) {
+      this.exitPresent();
+    } else {  
+      this.requestPresent(this.canvas);
+    }
+  }
+
+  VRManager.prototype.presentChange = function (evt) {
+    // console.log('--- presentchange');
+  }
+
+  VRManager.prototype.deactivate = function (evt) {
+    // console.log("---- Deactivate");
+  }
+
+  VRManager.prototype.activate = function (evt) {
+    console.log('--- activate');
+    if (!evt.display) {
+      console.error('No `display` property found on event');
+      return;
+    }
+    if (evt.reason && evt.reason !== 'navigation') {
+      console.error("Unexpected `reason` (expected to be 'navigation')")
+      return;
+    }
+    if (!evt.display.capabilities || !evt.display.capabilities.canPresent) {
+      console.error('VR display is not capable of presenting');
+      return;
+    }
+    this.setVRDisplay(evt.display);
+  }
+
+  VRManager.prototype.updateDisplayCapabilities = async function() {
+    if (!this.vrDisplay) {
+      return;
+    }
+
+    var canPresent = this.vrDisplay.capabilities.canPresent;
+    var hasPosition = this.vrDisplay.capabilities.hasPosition;
+    var hasExternalDisplay = this.vrDisplay.capabilities.hasExternalDisplay;
+
+    this.gameInstance.SendMessage(
+      this.unityObjectName, 'OnVRCapabilities',
+      JSON.stringify({
+        canPresent: canPresent,
+        hasPosition: hasPosition,
+        hasExternalDisplay: hasExternalDisplay
+      })
+    );
+
+    this.statusEl.dataset.enabled = canPresent;
+    this.enterVRButton.dataset.enabled = canPresent;
+  }
+
+  VRManager.prototype.requestAnimationFrame = function(cb) {
+    var now = performance.now();
+
+    // var timeDiff = now - this.rafStart;
+    
+    if (this.frameTimes == undefined) {
+      this.frameTimes = [];
+      this.fps;
+    }
+    
+    while (this.frameTimes.length > 0 && this.frameTimes[0] <= now - 1000) {
+      this.frameTimes.shift();
+    }
+    
+    this.frameTimes.push(now);
+    this.fps = this.frameTimes.length;
+    this.perfStatus.innerHTML = this.fps;  
+
+    // begin
+    if (this.vrDisplay) {
+      if (this.vrDisplay.isPresenting && !this.wasPresenting) {
+        console.log('on start vr');
+        this.gameInstance.SendMessage(this.unityObjectName, 'OnStartVR');
+        this.wasPresenting = true;
+        this.resize();
+      }
+  
+      if (!this.vrDisplay.isPresenting && this.wasPresenting) {
+        console.log('on end vr');
+        this.gameInstance.SendMessage(this.unityObjectName, 'OnEndVR');
+        this.wasPresenting = false;
+        this.resize();
+      }
+      
+      
+      this.animate();
+      
+      if (this.vrDisplay.isPresenting) {
+        this.vrDisplay.submitFrame();
+      }
+
+      return this.vrDisplay.requestAnimationFrame(cb);
+    }
+  }
+
+  VRManager.prototype.setVRDisplay = function(display) {
+    this.vrDisplay = display;
+    this.updateDisplayCapabilities();
+    window.requestAnimationFrame = this.requestAnimationFrame.bind(this);
+  }
+
+  VRManager.prototype.getVRDisplay = function () {
+    if (this.vrDisplay) {
+      return Promise.resolve(this.vrDisplay);
+    }
+
+    return navigator.getVRDisplays().then(function (displays) {
+      if (!displays.length) {
+        return null;
+      }
+      this.setVRDisplay(displays[displays.length - 1]);
+      return this.vrDisplay;
+    }.bind(this));
+  }
+
+  VRManager.prototype.unityLoaded = function () {
+    MozillaResearch.telemetry.performance.measure('LoadingTime', 'LoadingStart');
+
+    // retrieve canvas only after unity has loaded.
+    this.canvas = document.getElementById('#canvas');
+    document.body.dataset.unityLoaded = 'true';
+
+    this.gameInstance = window.gameInstance;
+
+    console.log(">>> unity loaded, resizing");
+    this.resize();
+    
+    this.getVRDisplay();
+    this.requestPresent(this.canvas);
+  }
+
+  VRManager.prototype.getGamepads = function(gamepads) {
+    function getGamepadButtons(gamepad) {
+      var buttons = [];
+      for (var i = 0; i < gamepad.buttons.length; i++) {
+        buttons.push({
+          pressed: gamepad.buttons[i].pressed,
+          touched: gamepad.buttons[i].touched,
+          value: gamepad.buttons[i].value
+        });
+      }
+      return buttons;
+    }
+  
+    function getGamepadAxes(gamepad) {
+      var axes = [];
+      for (var i = 0; i < gamepad.axes.length; i++) {
+        axes.push(gamepad.axes[i]);
+      }
+      return axes;
+    }
+
+    var vrGamepads = []
+    for (var i = 0; i < gamepads.length; ++i) {
+      var gamepad = gamepads[i];
+      if (gamepad && (gamepad.pose || gamepad.displayId)) {
+        if (gamepad.pose.position && gamepad.pose.orientation) {
+          // flips gamepad axis to work with Unity.
+          var position = gamepad.pose.position;
+          position[2] *= -1;
+          var orientation = gamepad.pose.orientation;
+          orientation[0] *= -1;
+          orientation[1] *= -1;
+
+          vrGamepads.push({
+            index: gamepad.index,
+            hand: gamepad.hand,
+            buttons: getGamepadButtons(gamepad),
+            axes: getGamepadAxes(gamepad),
+            orientation: Array.from(orientation),
+            position: Array.from(position)
+          });
+        }
+      }
+    }
+    return vrGamepads;
+  }
+
+  VRManager.prototype.animate = function () {
+    //console.log("animate");
+
+    
+    //if (!this.vrDisplay && gameInstance.vrDisplay) {
+    this.vrData.frameData = new VRFrameData();
+      //vrDisplay = gameInstance.vrDisplay;
+    //}
+
+    // if (!this.vrDisplay || !this.vrDisplay.isPresenting) {
+    //   console.log("raf original");
+    //   this.rafOriginal(this.animate);
+    // }
+
+    // if (vrDisplay) {
+    //   // When this is called for the first time, it will be using the standard
+    //   // `window.requestAnimationFrame` API, which will throw a Console warning when we call
+    //   // `vrDisplay.submitFrame(…)`. So for the first frame that this is called, we will
+    //   // abort early and request a new frame from the VR display instead.
+    //   if (vrDisplay.isPresenting && !submitNextFrame) {
+    //     submitNextFrame = true;
+    //     return vrDisplay.requestAnimationFrame(onAnimate);
+    //   }
+
+    //   // Check for polyfill so that we can utilize its mouse-look controls.
+    if (this.vrDisplay.isPresenting) {
+      var vrData = this.vrData;
+
+      this.vrDisplay.getFrameData(vrData.frameData);
+
+      // convert view and projection matrices for use in Unity.
+      mat4.copy(vrData.leftProjectionMatrix, vrData.frameData.leftProjectionMatrix);
+      mat4.transpose(vrData.leftProjectionMatrix, vrData.leftProjectionMatrix);
+
+      mat4.copy(vrData.rightProjectionMatrix, vrData.frameData.rightProjectionMatrix);
+      mat4.transpose(vrData.rightProjectionMatrix, vrData.rightProjectionMatrix);
+
+      mat4.copy(vrData.leftViewMatrix, vrData.frameData.leftViewMatrix);
+      mat4.transpose(vrData.leftViewMatrix, vrData.leftViewMatrix);
+      vrData.leftViewMatrix[2] *= -1;
+      vrData.leftViewMatrix[6] *= -1;
+      vrData.leftViewMatrix[10] *= -1;
+      vrData.leftViewMatrix[14] *= -1;
+
+      mat4.copy(vrData.rightViewMatrix, vrData.frameData.rightViewMatrix);
+      mat4.transpose(vrData.rightViewMatrix, vrData.rightViewMatrix);
+      vrData.rightViewMatrix[2] *= -1;
+      vrData.rightViewMatrix[6] *= -1;
+      vrData.rightViewMatrix[10] *= -1;
+      vrData.rightViewMatrix[14] *= -1;
+
+      // Sit Stand transform
+      if (this.vrDisplay.stageParameters) {
+        mat4.copy(vrData.sitStandMatrix, this.vrDisplay.stageParameters.sittingToStandingTransform);
+      }
+      //  else {
+      //   mat4.identity(vrData.sitStand);
+      //   mat4.translate(vrData.sitStand, vrData.sitStand, [0, vrData.defaultHeight, 0]);
+      // }
+      mat4.transpose(vrData.sitStandMatrix, vrData.sitStandMatrix);
+
+      // var hmdData = {
+      //   leftProjectionMatrix: Array.from(vrData.leftProjectionMatrix),
+      //   rightProjectionMatrix: Array.from(vrData.rightProjectionMatrix),
+      //   leftViewMatrix: Array.from(vrData.leftViewMatrix),
+      //   rightViewMatrix: Array.from(vrData.rightViewMatrix),
+      //   sitStand: Array.from(vrData.sitStand),
+      //   controllers: this.getGamepads(navigator.getGamepads())
+      // };
+
+      gameInstance.SendMessage('WebVRCameraSet', 'OnWebVRData', JSON.stringify({
+        controllers: this.getGamepads(navigator.getGamepads())
+      }));
+
+      var hmdData = {
+        leftProjectionMatrix: vrData.leftProjectionMatrix,
+        rightProjectionMatrix: vrData.rightProjectionMatrix,
+        leftViewMatrix: vrData.leftViewMatrix,
+        rightViewMatrix: vrData.rightViewMatrix,
+        sitStandMatrix: vrData.sitStandMatrix
+      }
+      document.dispatchEvent(new CustomEvent('VRData', { detail: hmdData }));
+    }
+
+    //   if (!vrDisplay.isPresenting || isPolyfilled(vrDisplay)) {
+    //     submitNextFrame = false;
+    //   }
+    //   if (submitNextFrame) {
+    
+    //   }
+
+    //   updateStatus();
+    // }
+  }
+
+  VRManager.prototype.unityMessage = function (msg) {
+      //var onAnimate = this.animate.bind(this);
+ 
+      if (typeof msg.detail === 'string') {
+        // Wait for Unity to render the frame; then submit the frame to the VR display.
+        if (msg.detail === 'PostRender') {
+
+          
+
+        //   this.submitNextFrame = this.vrDisplay && this.vrDisplay.isPresenting;
+        //   if (this.submitNextFrame) {
+        //     this.vrDisplay.requestAnimationFrame(onAnimate);
+        //     if (!this.submittingFrames && this.gameInstance) {
+        //       this.submittingFrames = true;
+        //       //this.resize();
+        //       console.log("0000> start")
+        //       this.gameInstance.SendMessage(this.unityObjectName, 'OnStartVR');
+        //     }
+        //   }
+        }
+  
+        // Handle quick VR/normal toggling.
+        // if (msg.detail.indexOf('ConfigureToggleVRKeyName') === 0) {
+        //   toggleVRKeyName = msg.detail.split(':')[1];
+        // }
+      }
+  
+      // Handle an UI command
+      // if (msg.detail.type === 'ShowPanel') {
+      //   var panelId = document.getElementById(msg.detail.panelId);
+      //   showInstruction(panelId);
+      // }
+    
+  }
+
+  init();
+
+  function initWebVRManager () {
+    // This ought to contain the contents of `webvr.js`.
+    var vrManager = window.vrManager = new VRManager();
+    return vrManager;
+  }
+
+  function init() {
+    if (!navigator.getVRDisplays) {
+      var script = document.createElement('script');
+      script.src = 'vendor/webvr-polyfill.min.js';
+      document.getElementsByTagName('head')[0].appendChild(script);
+
+      script.addEventListener('load', function () {
+        initWebVRManager();
+      });
+
+      script.addEventListener('error', function (err) {
+        console.warn('Could not load the WebVR Polyfill script:', err);
+      });
+    }
+
+    initWebVRManager();
+}
+
+
+  /// ------- OLD STUFF
+  /*
   var defaultHeight = 1.5;
 
   var enterVRButton = document.getElementById('entervr');
@@ -429,4 +899,8 @@
   onResize();
 
   window.requestAnimationFrame(onAnimate);
+
+
+  */
+
 })();

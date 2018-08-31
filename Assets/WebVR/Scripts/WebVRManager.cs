@@ -102,21 +102,21 @@ public class WebVRManager : MonoBehaviour
     {
         WebVRData webVRData = WebVRData.CreateFromJSON (jsonString);
 
-        if (webVRData.sitStand.Length > 0)
-            sitStand = numbersToMatrix (webVRData.sitStand);
+        // if (webVRData.sitStand.Length > 0)
+        //     sitStand = numbersToMatrix (webVRData.sitStand);
 
         // Reset RoomScale matrix if we are using Stationary tracking space.
         if (TrackingSpace == UnityEngine.XR.TrackingSpaceType.Stationary)
             sitStand = Matrix4x4.identity;
 
         // Update headset tracking
-        if (OnHeadsetUpdate != null)
-            OnHeadsetUpdate(
-                numbersToMatrix (webVRData.leftProjectionMatrix),
-                numbersToMatrix (webVRData.leftViewMatrix),
-                numbersToMatrix (webVRData.rightProjectionMatrix),
-                numbersToMatrix (webVRData.rightViewMatrix),
-                sitStand);
+        // if (OnHeadsetUpdate != null)
+        //     OnHeadsetUpdate(
+        //         numbersToMatrix (webVRData.leftProjectionMatrix),
+        //         numbersToMatrix (webVRData.leftViewMatrix),
+        //         numbersToMatrix (webVRData.rightProjectionMatrix),
+        //         numbersToMatrix (webVRData.rightViewMatrix),
+        //         sitStand);
 
         // Update controllers
         if (webVRData.controllers.Length > 0)
@@ -199,6 +199,15 @@ public class WebVRManager : MonoBehaviour
     [DllImport("__Internal")]
     private static extern void TestTimeReturn();
 
+    [DllImport("__Internal")]
+    private static extern void InitJavaScriptSharedArray(float[] array, int length);
+
+    [DllImport("__Internal")]
+    private static extern void ListenWebVRData();
+
+    // Shared Array for display values.
+    float[] sharedArray = new float[5 * 16];
+
     // delta time for latency checker.
     private float deltaTime = 0.0f;
 
@@ -212,10 +221,10 @@ public class WebVRManager : MonoBehaviour
     [System.Serializable]
     private class WebVRData
     {
-        public float[] leftProjectionMatrix = null;
-        public float[] rightProjectionMatrix = null;
-        public float[] leftViewMatrix = null;
-        public float[] rightViewMatrix = null;
+        // public float[] leftProjectionMatrix = null;
+        // public float[] rightProjectionMatrix = null;
+        // public float[] leftViewMatrix = null;
+        // public float[] rightViewMatrix = null;
         public float[] sitStand = null;
         public WebVRControllerData[] controllers = new WebVRControllerData[0];
         public static WebVRData CreateFromJSON(string jsonString)
@@ -239,9 +248,19 @@ public class WebVRManager : MonoBehaviour
     {
         #if !UNITY_EDITOR && UNITY_WEBGL
         ConfigureToggleVRKeyName(toggleVRKeyName);
+        InitJavaScriptSharedArray(sharedArray, sharedArray.Length);
+        ListenWebVRData();
         #endif
-
         setTrackingSpaceType();
+    }
+
+    float[] GetFromSharedArray(int offset)
+    {
+        float[] newArray = new float[16];
+        for (int i = 0; i < newArray.Length; i++) {
+            newArray[i] = sharedArray[offset + i];
+        }
+        return newArray;
     }
 
     void Update()
@@ -253,10 +272,50 @@ public class WebVRManager : MonoBehaviour
         if (quickToggleEnabled && Input.GetKeyUp(toggleVRKeyName))
             toggleVrState();
         #endif
+
+
+
+        if (OnHeadsetUpdate != null) {
+            Matrix4x4 leftProjectionMatrix = numbersToMatrix(GetFromSharedArray(0));
+            Matrix4x4 rightProjectionMatrix = numbersToMatrix(GetFromSharedArray(16));
+            Matrix4x4 leftViewMatrix = numbersToMatrix(GetFromSharedArray(32));
+            Matrix4x4 rightViewMatrix = numbersToMatrix(GetFromSharedArray(48));
+            Matrix4x4 sitStandMatrix = numbersToMatrix(GetFromSharedArray(64));
+
+            sitStand = sitStandMatrix;
+
+            OnHeadsetUpdate(
+                leftProjectionMatrix,
+                rightProjectionMatrix,
+                leftViewMatrix,
+                rightViewMatrix,
+                sitStand);
+         }
     }
 
     void OnGUI()
     {
+
+        // float[] leftProjectionMatrix = GetFromSharedArray(0);
+        // float[] rightProjectionMatrix = GetFromSharedArray(16);
+        // float[] leftViewMatrix = GetFromSharedArray(32);
+        // float[] rightViewMatrix = GetFromSharedArray(48);
+        // float[] sitStandMatrix = GetFromSharedArray(64);
+
+        // string arrayString = "leftProject: ";
+        // for (var i = 0; i < leftProjectionMatrix.Length; i++) {
+        //     arrayString += leftProjectionMatrix[i].ToString() + ", ";
+        // }
+
+        // GUI.Label (new Rect (20, 20, 600, 100), arrayString);
+
+        //  string arrayString2 = "rightProject: ";
+        // for (var i = 0; i < rightProjectionMatrix.Length; i++) {
+        //     arrayString2 += rightProjectionMatrix[i].ToString() + ", ";
+        // }
+
+        // GUI.Label (new Rect (20, 60, 600, 100), arrayString2);
+        
         if (!showPerf)
             return;
 
