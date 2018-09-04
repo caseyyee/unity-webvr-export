@@ -52,6 +52,64 @@
     }
     
     this.attachEventListeners();
+
+    //this.getVRDisplay();
+    this.getVRDisplay().then(function () {
+      // window.requestAnimationFrame = this.requestAnimationFrame.bind(this);
+      this.rafBound = this.requestAnimationFrame.bind(this);
+      //this.rafBound();
+      window.requestAnimationFrame = this.rafBound;
+    }.bind(this));
+    
+  }
+
+  VRManager.prototype.requestAnimationFrame = function(cb) {
+    // var now = performance.now();
+
+    // // var timeDiff = now - this.rafStart;
+    
+    // if (this.frameTimes == undefined) {
+    //   this.frameTimes = [];
+    //   this.fps;
+    // }
+    
+    // while (this.frameTimes.length > 0 && this.frameTimes[0] <= now - 1000) {
+    //   this.frameTimes.shift();
+    // }
+    
+    // this.frameTimes.push(now);
+    // this.fps = this.frameTimes.length;
+    // this.perfStatus.innerHTML = this.fps;  
+
+    // // begin
+    // if (this.vrDisplay) {
+    //   if (this.vrDisplay.isPresenting && !this.wasPresenting) {
+    //     console.log('on start vr');
+    //     this.gameInstance.SendMessage(this.unityObjectName, 'OnStartVR');
+    //     this.wasPresenting = true;
+    //     this.resize();
+    //   }
+  
+    //   if (!this.vrDisplay.isPresenting && this.wasPresenting) {
+    //     console.log('on end vr');
+    //     this.gameInstance.SendMessage(this.unityObjectName, 'OnEndVR');
+    //     this.wasPresenting = false;
+    //     this.resize();
+    //   }
+
+    //   this.animate();
+    // }
+
+    if (this.vrDisplay) {
+    //   if (this.submitNextFrame) {
+    //     this.vrDisplay.submitFrame();
+    //   }
+      
+    //  this.vrDisplay.requestAnimationFrame(this.rafBound);
+      return this.vrDisplay.requestAnimationFrame(cb);
+    } else {
+      return this.rafOriginal(cb);
+    }
   }
 
   VRManager.prototype.attachEventListeners = function () {
@@ -81,7 +139,7 @@
     console.log('--- resize');
     if (!this.canvas) return;
 
-    var scaleResolution = 0.75;
+    var scaleResolution = 0.5;
 
     if (this.vrDisplay && this.vrDisplay.isPresenting) {
       var leftEye = this.vrDisplay.getEyeParameters('left');
@@ -167,72 +225,16 @@
       return;
     }
 
-    var canPresent = this.vrDisplay.capabilities.canPresent;
-    var hasPosition = this.vrDisplay.capabilities.hasPosition;
-    var hasExternalDisplay = this.vrDisplay.capabilities.hasExternalDisplay;
-
-    this.gameInstance.SendMessage(
-      this.unityObjectName, 'OnVRCapabilities',
-      JSON.stringify({
-        canPresent: canPresent,
-        hasPosition: hasPosition,
-        hasExternalDisplay: hasExternalDisplay
-      })
-    );
-
-    this.statusEl.dataset.enabled = canPresent;
-    this.enterVRButton.dataset.enabled = canPresent;
-  }
-
-  VRManager.prototype.requestAnimationFrame = function(cb) {
-    var now = performance.now();
-
-    // var timeDiff = now - this.rafStart;
-    
-    if (this.frameTimes == undefined) {
-      this.frameTimes = [];
-      this.fps;
-    }
-    
-    while (this.frameTimes.length > 0 && this.frameTimes[0] <= now - 1000) {
-      this.frameTimes.shift();
-    }
-    
-    this.frameTimes.push(now);
-    this.fps = this.frameTimes.length;
-    this.perfStatus.innerHTML = this.fps;  
-
-    // begin
-    if (this.vrDisplay) {
-      if (this.vrDisplay.isPresenting && !this.wasPresenting) {
-        console.log('on start vr');
-        this.gameInstance.SendMessage(this.unityObjectName, 'OnStartVR');
-        this.wasPresenting = true;
-        this.resize();
-      }
-  
-      if (!this.vrDisplay.isPresenting && this.wasPresenting) {
-        console.log('on end vr');
-        this.gameInstance.SendMessage(this.unityObjectName, 'OnEndVR');
-        this.wasPresenting = false;
-        this.resize();
-      }
-      
-      
-      this.animate();
-      
-      if (this.vrDisplay.isPresenting) {
-        this.vrDisplay.submitFrame();
-      }
-
-      return this.vrDisplay.requestAnimationFrame(cb);
-    }
+    if (this.vrDisplay.capabilities.canPresent) {
+      this.statusEl.dataset.enabled = true;
+      this.enterVRButton.dataset.enabled = true;
+    }    
   }
 
   VRManager.prototype.setVRDisplay = function(display) {
     this.vrDisplay = display;
     this.updateDisplayCapabilities();
-    window.requestAnimationFrame = this.requestAnimationFrame.bind(this);
+    //window.requestAnimationFrame = this.requestAnimationFrame.bind(this);
   }
 
   VRManager.prototype.getVRDisplay = function () {
@@ -261,8 +263,18 @@
     console.log(">>> unity loaded, resizing");
     this.resize();
     
-    this.getVRDisplay();
-    this.requestPresent(this.canvas);
+    //this.requestPresent(this.canvas);
+
+    if (this.vrDisplay) {
+      this.gameInstance.SendMessage(
+        this.unityObjectName, 'OnVRCapabilities',
+        JSON.stringify({
+          canPresent: this.vrDisplay.capabilities.canPresent,
+          hasPosition: this.vrDisplay.capabilities.hasPosition,
+          hasExternalDisplay: this.vrDisplay.capabilities.hasExternalDisplay
+        })
+      );
+    }
   }
 
   VRManager.prototype.getGamepads = function(gamepads) {
@@ -313,7 +325,42 @@
   }
 
   VRManager.prototype.animate = function () {
-    //console.log("animate");
+    var now = performance.now();
+
+    // var timeDiff = now - this.rafStart;
+    
+    if (this.frameTimes == undefined) {
+      this.frameTimes = [];
+      this.fps;
+    }
+    
+    while (this.frameTimes.length > 0 && this.frameTimes[0] <= now - 1000) {
+      this.frameTimes.shift();
+    }
+    
+    this.frameTimes.push(now);
+    this.fps = this.frameTimes.length;
+    this.perfStatus.innerHTML = this.fps;  
+
+     // Start & end VR
+     if (this.vrDisplay) {
+      if (this.vrDisplay.isPresenting && !this.wasPresenting) {
+        console.log('on start vr');
+        this.gameInstance.SendMessage(this.unityObjectName, 'OnStartVR');
+        this.wasPresenting = true;
+        this.resize();
+      }
+  
+      if (!this.vrDisplay.isPresenting && this.wasPresenting) {
+        console.log('on end vr');
+        this.gameInstance.SendMessage(this.unityObjectName, 'OnEndVR');
+        this.wasPresenting = false;
+        this.resize();
+      }
+
+      //this.animate();
+    }
+
 
     
     //if (!this.vrDisplay && gameInstance.vrDisplay) {
@@ -382,9 +429,9 @@
       //   controllers: this.getGamepads(navigator.getGamepads())
       // };
 
-      // gameInstance.SendMessage('WebVRCameraSet', 'OnWebVRData', JSON.stringify({
-      //   controllers: this.getGamepads(navigator.getGamepads())
-      // }));
+      gameInstance.SendMessage('WebVRCameraSet', 'OnWebVRData', JSON.stringify({
+        controllers: this.getGamepads(navigator.getGamepads())
+      }));
 
       var hmdData = {
         leftProjectionMatrix: vrData.leftProjectionMatrix,
@@ -405,17 +452,18 @@
 
     //   updateStatus();
     // }
+
+    if (this.vrDisplay && this.vrDisplay.isPresenting) {
+      this.vrDisplay.submitFrame();
+    }
   }
 
   VRManager.prototype.unityMessage = function (msg) {
-      //var onAnimate = this.animate.bind(this);
+      var animate = this.animate.bind(this);
  
       if (typeof msg.detail === 'string') {
         // Wait for Unity to render the frame; then submit the frame to the VR display.
         if (msg.detail === 'PostRender') {
-
-          
-
         //   this.submitNextFrame = this.vrDisplay && this.vrDisplay.isPresenting;
         //   if (this.submitNextFrame) {
         //     this.vrDisplay.requestAnimationFrame(onAnimate);
@@ -426,6 +474,9 @@
         //       this.gameInstance.SendMessage(this.unityObjectName, 'OnStartVR');
         //     }
         //   }
+          if (this.vrDisplay && this.vrDisplay.isPresenting) {
+            this.vrDisplay.requestAnimationFrame(animate);
+          }
         }
   
         // Handle quick VR/normal toggling.

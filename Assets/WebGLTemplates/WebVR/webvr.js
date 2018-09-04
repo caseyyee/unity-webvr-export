@@ -217,8 +217,7 @@
         this.wasPresenting = false;
         this.resize();
       }
-      
-      
+
       this.animate();
       
       if (this.vrDisplay.isPresenting) {
